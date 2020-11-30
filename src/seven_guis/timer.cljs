@@ -9,21 +9,19 @@
 ;;; All times in seconds
 
 (def max-end 60)
+(def tick-step 0.1)
 
 
 (defn seconds->ms [t]
   (int (* t 1000)))
 
-(def tick-step 0.1)
 
 (declare adjust-timer)
 
 
 (defn tick [state-atom]
   (fn []
-    (swap! state-atom
-           (fn [{:keys [elapsed end] :as old}]
-             (assoc old :elapsed (+ elapsed tick-step))))
+    (swap! state-atom update :elapsed + tick-step)
     (adjust-timer state-atom)))
 
 
@@ -49,9 +47,10 @@
 
 
 (defn timer-component []
-  (r/with-let [state (r/atom {:end (/ max-end 2)
-                              :elapsed (/ max-end 4)})
-               _ (adjust-timer state)]
+  (r/with-let [state (doto (r/atom {:end (/ max-end 2)
+                                    :elapsed 0})
+                       adjust-timer
+                       (add-watch ::watch #(adjust-timer %2)))]
     (let [{:keys [elapsed end]} @state]
       [:<>
        [:div
@@ -69,14 +68,13 @@
                  :on-change
                  (fn [e]
                    (swap! state assoc :end
-                          (edn/read-string (util/evt-value e)))
-                   (adjust-timer state))}]]
+                          (edn/read-string (util/evt-value e))))}]]
        [:div
         [:button {:on-click (fn [_]
-                              (swap! state assoc :elapsed 0)
-                              (adjust-timer state))}
+                              (swap! state assoc :elapsed 0))}
          "Reset"]]])
-    (finally (clear-timer state))))
+    (finally (remove-watch state ::watch)
+             (clear-timer state))))
 
 
 (rdom/render [timer-component]
