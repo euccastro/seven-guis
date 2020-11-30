@@ -18,6 +18,19 @@
         nil
         (throw e)))))
 
+
+(defn evt-value [e]
+  (.. e -target -value))
+
+
+(defn text-input-for
+  [ratom]
+  [:input {:type :text
+           :value @ratom
+           :on-change #(reset! ratom (evt-value %))}])
+
+
+
 (comment
   (read-edn-if-valid "1")
   (read-edn-if-valid ":a")

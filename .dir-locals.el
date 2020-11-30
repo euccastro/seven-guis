@@ -1,3 +1,2 @@
 ((nil
-  (cider-default-cljs-repl . figwheel-main)
-  (cider-figwheel-main-default-options . "counter")))
+  (cider-default-cljs-repl . figwheel-main)))

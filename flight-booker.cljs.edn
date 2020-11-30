@@ -1,0 +1,2 @@
+^{:open-url "http://[[server-hostname]]:[[server-port]]/flight-booker.html"}
+{:main seven-guis.flight-booker}
