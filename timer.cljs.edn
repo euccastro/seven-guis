@@ -1,0 +1,2 @@
+^{:open-url "http://[[server-hostname]]:[[server-port]]/timer.html"}
+{:main seven-guis.timer}
