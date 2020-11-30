@@ -1,34 +1,10 @@
 (ns seven-guis.temperature-converter
-  (:require [clojure.edn :as edn]
+  (:require [seven-guis.util :refer [read-edn-if-valid]]
             [reagent.core :as r]
             [reagent.dom :as rdom]))
 
 (enable-console-print!)
 
-(comment
-  (number? (js/parseFloat "not really a number!!11"))  ;; => true
-  ;; so we can't use this
-  )
-
-
-(defn read-edn-if-valid
-  "Returns nil on invalid edn, instead of crashing"
-  [s]
-  (try
-    (edn/read-string s)
-    (catch ExceptionInfo e
-      (if (= (-> e .-data :type) :reader-exception)
-        nil
-        (throw e)))))
-
-(comment
-  (read-edn-if-valid "1")
-  (read-edn-if-valid ":a")
-  (read-edn-if-valid ")")
-  (try
-    (edn/read-string ")")
-    (catch ExceptionInfo e (-> e .-data :type)))
-  )
 
 (defn celsius->fahrenheit [c]
   (+ (/ (* c 9) 5) 32))
@@ -47,27 +23,26 @@
 (defn temperature-converter []
   (let [celsius (r/atom "")
         fahrenheit (r/atom "")
-        converter {[celsius fahrenheit] celsius->fahrenheit
-                   [fahrenheit celsius] fahrenheit->celsius}
-        handler (fn [this other]
+        convert-from {celsius  celsius->fahrenheit
+                      fahrenheit fahrenheit->celsius}
+        other (fn [x] (if (identical? x celsius)
+                        fahrenheit
+                        celsius))
+        handler (fn [this]
                   (fn [ev]
                     (let [val (-> ev .-target .-value)
                           ?parsed (read-edn-if-valid val)]
                       (reset! this val)
                       (when (number? ?parsed)
-                        (reset! other ((converter [this other]) ?parsed))))))]
+                        (reset! (other this)
+                                ((convert-from this)
+                                 ?parsed))))))]
     (fn []
-      [:div
-       [:input
-        {:type :text
-         :value @celsius
-         :on-change (handler celsius fahrenheit) }]
-       " Celsius = "
-       [:input
-        {:type :text
-         :value @fahrenheit
-         :on-change (handler fahrenheit celsius)}]
-       " Fahrenheit"])))
+      (let [input (fn [which]
+                    [:input {:type :text
+                             :value @which
+                             :on-change (handler which)}])]
+        [:<> (input celsius) " Celsius = " (input fahrenheit) " Fahrenheit"]))))
 
 
 (rdom/render [temperature-converter]
