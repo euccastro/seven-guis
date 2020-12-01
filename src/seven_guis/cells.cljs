@@ -34,7 +34,7 @@
          @cursor)])))
 
 
-(defn counter []
+(defn cells []
   (let [state (r/atom {:cell-contents {}})
         cursors (into {}
                       (for [row rows
@@ -57,5 +57,5 @@
             [cell k (cursors [row col])])])])))
 
 
-(rdom/render [counter]
+(rdom/render [cells]
              (.getElementById js/document "app"))
