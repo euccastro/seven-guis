@@ -1,0 +1,26 @@
+body {
+    background-color: #e8e8e8;
+}
+
+#root {
+    display: flex;
+    flex-direction: column;
+    justify-content: top;
+    align-items: center;
+}
+
+#buttons {
+    display: flex;
+    justify-content: center;
+}
+
+button {
+    margin: 12px;
+}
+
+svg {
+    position: relative;
+    width: 100%;
+    background-color: white;
+    outline: 1px solid black;
+}
