@@ -142,7 +142,7 @@
                   (if (any-transients? old)
                     (close-transients old)
                     (assoc old :menu-pos (when selected-circle [(.-pageX e) (.-pageY e)]))))))}
-      ;; always paint this one on top
+      ;; always paint this one behind, so we can see every outline
       (when selected-circle
         [:circle (-> selected-circle
                      (update :r #(or tmp-selected-circle-radius %))
