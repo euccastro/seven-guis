@@ -143,10 +143,11 @@
                                 :stroke "black" :stroke-width 1
                                 :fill "none"}]
                 (swap! state
-                       #(-> %
-                            (dissoc :menu-pos)
-                            (add-to-history conj new-circle)
-                            (assoc :selected-circle new-circle))))))
+                       (update-if no-transients?
+                                  #(-> %
+                                       (dissoc :menu-pos)
+                                       (add-to-history conj new-circle)
+                                       (assoc :selected-circle new-circle)))))))
           :on-context-menu
           (fn [e]
             (.preventDefault e)
