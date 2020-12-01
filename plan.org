@@ -1,3 +1,15 @@
 * todo
 ** make a single figwheel target and put them all in the same page
 ** prevent resizing on mobile
+** cell
+*** use reactions
+**** each cell has a value cursor
+     the value of this is displayed when the cell is unfocused.  this is what
+     other cells watch.
+**** each element also has a private source text
+     this gets remembered across edits. this is internal to the cell.
+**** each element *with formula* also has a ratom or r/track
+***** watches the value cursors of input cells it depends on
+***** updates its own value cursor on changes
+***** this ratom is not watched by anyone else, so it can be internal to the component
+***** we can dispose of any existing one when we update the formula
