@@ -6,7 +6,7 @@
 
 
 (def initial-circle-radius 20)
-(def max-circle-radius 100)
+(def max-circle-radius 200)
 
 
 (defn mouse-event-coords
@@ -156,14 +156,14 @@
                      (if (any-transients? old)
                        (close-transients old)
                        (assoc old :menu-pos (when selected-circle [(.-pageX e) (.-pageY e)]))))))}
-         (for [{:keys [id] :as c} circles
-               :when (not= c selected-circle)]
-           ^{:key id} [:circle c])
          ;; always paint this one on top
          (when selected-circle
            [:circle (-> selected-circle
                         (update :r #(or tmp-selected-circle-radius %))
-                        (assoc :fill "lightgray"))])]
+                        (assoc :fill "lightgray"))])
+         (for [{:keys [id] :as c} circles
+               :when (not= c selected-circle)]
+           ^{:key id} [:circle c])]
         (when-let [[x y] menu-pos]
           [:div#popup-menu
            {:style {:left x :top y}
