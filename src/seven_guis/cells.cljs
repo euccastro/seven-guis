@@ -10,7 +10,7 @@
 (def cols "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 
-(defn cell-editor [edit-text cursor]
+(defn cell-editor [edit-text source]
   [:input
    {:type :text
     :auto-focus true
@@ -24,19 +24,23 @@
     :value @edit-text
     :on-blur #(let [t @edit-text]
                 (when (string? t)
-                  (reset! cursor t)
+                  (reset! source t)
                   (reset! edit-text nil)))
     :on-change #(reset! edit-text (util/evt-value %))}])
 
 
 (defn cell [k cursor]
-  (let [edit-text (r/atom nil)]
-    (fn [k cursor]
-      [:td {:title k  ; tooltip to double-check you're editing the right cell
-            :on-double-click #(reset! edit-text (or @cursor ""))}
-       (if (some? @edit-text)
-         [cell-editor edit-text cursor]
-         @cursor)])))
+  (r/with-let [source (r/atom "")
+               edit-text (r/atom nil)
+               _ (add-watch source k
+                            (fn [_ _ _ new-val]
+                              (reset! cursor (str "eval " new-val))))]
+    [:td {:title k  ; tooltip to double-check you're editing the right cell
+          :on-double-click #(reset! edit-text @source)}
+     (if (some? @edit-text)
+       [cell-editor edit-text source]
+       @cursor)]
+    (finally (remove-watch source k))))
 
 
 (defn cells []
@@ -48,10 +52,8 @@
     (fn []
       [:table
        [:tr
-        [:th]
-        (for [col cols]
-          ^{:key col}
-          [:th col])]
+        [:th]  ; blank corner
+        (for [col cols] ^{:key col} [:th col])]
        (for [row rows]
          ^{:key row}
          [:tr
