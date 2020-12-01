@@ -10,36 +10,37 @@
 (def cols "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 
-(defn cell [k contents state]
-  [:td {:title k
-        :on-double-click #(swap! state assoc :editing-cell k)}
-   (if (= k (:editing-cell @state))
-     [:input {:type :text
-              :value contents
-              :on-blur #(swap! state dissoc :editing-cell)
-              :on-change #(swap! state assoc-in [:cell-contents k] (util/evt-value %))}]
-     contents)])
+(defn cell [k editing? state]
+  (let [contents (r/atom nil)]
+    (fn [k editing? state]
+      [:td {:title k
+            :on-double-click #(swap! state assoc :editing-cell k)}
+       (if editing?
+         [:input {:type :text
+                  :value @contents
+                  :on-blur #(swap! state dissoc :editing-cell)
+                  :on-change #(reset! contents (util/evt-value %))}]
+         @contents)])))
 
 
 (defn counter []
-  (let [state (r/atom {:cell-contents {}
-                       :editing-cell nil})]
+  (let [state (r/atom {:editing-cell nil})]
     (fn []
-      [:table
-       [:tr
-        [:th]
-        (for [col cols]
-          ^{:key col}
-          [:th col])]
-       (for [row rows]
-         ^{:key row}
+      (let [{:keys [editing-cell]} @state]
+        [:table
          [:tr
-          [:th row]
-          (for [col cols
-                :let [k (str col row)
-                      cell-contents (get-in @state [:cell-contents k])]]
-            ^{:key k}
-            [cell k cell-contents state])])])))
+          [:th]
+          (for [col cols]
+            ^{:key col}
+            [:th col])]
+         (for [row rows]
+           ^{:key row}
+           [:tr
+            [:th row]
+            (for [col cols
+                  :let [k (str col row)]]
+              ^{:key k}
+              [cell k (= k editing-cell) state])])]))))
 
 
 (rdom/render [counter]
