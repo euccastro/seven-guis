@@ -41,6 +41,22 @@
         (assoc :history-index (dec (count new-history))))))
 
 
+(defn current-circles [{:keys [history history-index]}]
+  (get history history-index))
+
+
+(defn selected-circle [{[mx my] :mouse-pos :as state}]
+  (let [circle-sqdist-to-mouse #(squared-dist mx my (:cx %) (:cy %))]
+    (->> (current-circles state)
+         (filter #(< (circle-sqdist-to-mouse %)
+                     (Math/pow (:r %) 2)))
+         (apply min-key circle-sqdist-to-mouse))))
+
+
+(defn update-selected-circle [state]
+  (assoc state :selected-circle (selected-circle state)))
+
+
 (defn close-transients
   "Close popup menu and resizing dialog, committing resize if necessary."
   [{:keys [tmp-selected-circle-radius selected-circle] :as old-state}]
@@ -50,114 +66,134 @@
                                  replace
                                  {selected-circle
                                   (assoc selected-circle :r tmp-selected-circle-radius)}))
-    true (dissoc :menu-pos :dialog? :tmp-selected-circle-radius :selected-circle)))
+    true (dissoc :menu-pos :dialog? :tmp-selected-circle-radius)
+    ;; We've been pinning the selection while transients were active, so let's
+    ;; refresh it without waiting for the user to move the mouse.
+    true update-selected-circle))
+
+
+(defn any-transients? [{:keys [menu-pos dialog?]}]
+  (or menu-pos dialog?))
+
+
+(def no-transients? (complement any-transients?))
+
+
+(defn update-if [pred? f]
+  (fn [state & args]
+    (if (pred? state)
+      (apply f state args)
+      state)))
 
 
 (defn circle-drawer []
-  (let [state (r/atom {:selected-circle nil
-                       :tmp-selected-circle-radius nil
-                       :menu-pos nil
-                       :dialog? false
-                       :history-index -1
-                       :history []})]
-    (fn []
-      (let [{:keys [selected-circle
-                    tmp-selected-circle-radius
-                    menu-pos
-                    dialog?
-                    history-index
-                    history]} @state
-            any-transients? (or menu-pos dialog?)
-            close-any-transients #(when any-transients?
-                                    (.preventDefault %)
-                                    (swap! state close-transients))
-            circles (get history history-index)]
-        [:div#root
-         {:on-click close-any-transients
-          :on-context-menu close-any-transients}
-         [:div#buttons
-          [:button
-           {:disabled (< history-index 0)
-            :on-click (fn [_]
+  (r/with-let [state (r/atom {:selected-circle nil
+                              :tmp-selected-circle-radius nil
+                              :menu-pos nil
+                              :dialog? false
+                              :history-index -1
+                              :history []})
+               global-listener (fn [e]
+                                 (when (any-transients? @state)
+                                   (.preventDefault e)
+                                   (swap! state close-transients)))
+               _ (.addEventListener js/document "click" global-listener)
+               _ (.addEventListener js/document "contextmenu" global-listener)]
+    (let [{:keys [selected-circle
+                  tmp-selected-circle-radius
+                  menu-pos
+                  dialog?
+                  history-index
+                  history]} @state
+          circles (get history history-index)]
+      [:div#root
+       [:div#buttons
+        [:button
+         {:disabled (< history-index 0)
+          :on-click (fn [_]
+                      (swap! state
+                             #(-> %
+                                  (dissoc :selected-circle)
+                                  (update :history-index dec))))}
+         "Undo"]
+        [:button
+         {:disabled (= history-index (dec (count history)))
+          :on-click #(swap! state update :history-index inc)}
+         "Redo"]]
+       [:div  ; get flex layout, let svg have `position: relative` so I can get bounds
+        [:svg
+         {:width 600
+          :height 400
+          :on-mouse-leave
+          #(swap! state (update-if no-transients? dissoc) :selected-circle)
+          :on-mouse-move
+          (fn [e]
+            (swap! state
+                   (fn [old]
+                     (cond-> (assoc old :mouse-pos (mouse-event-coords e))
+                       ;; keep selection stable while transients are around
+                       (no-transients? old) update-selected-circle))))
+          :on-click
+          (fn [e]
+            (when (no-transients? @state)
+              (.stopPropagation e)
+              (let [[mx my] (mouse-event-coords e)
+                    new-circle {:id (str (random-uuid))
+                                :cx mx :cy my :r initial-circle-radius
+                                :stroke "black" :stroke-width 1
+                                :fill "none"}]
+                (swap! state
+                       #(-> %
+                            (dissoc :menu-pos)
+                            (add-to-history conj new-circle)
+                            (assoc :selected-circle new-circle))))))
+          :on-context-menu
+          (fn [e]
+            (.preventDefault e)
+            (.stopPropagation e)
+            (swap! state
+                   (fn [old]
+                     (if (any-transients? old)
+                       (close-transients old)
+                       (assoc old :menu-pos (when selected-circle [(.-pageX e) (.-pageY e)]))))))}
+         (for [{:keys [id] :as c} circles
+               :when (not= c selected-circle)]
+           ^{:key id} [:circle c])
+         ;; always paint this one on top
+         (when selected-circle
+           [:circle (-> selected-circle
+                        (update :r #(or tmp-selected-circle-radius %))
+                        (assoc :fill "lightgray"))])]
+        (when-let [[x y] menu-pos]
+          [:div#popup-menu
+           {:style {:left x :top y}
+            :on-click (fn [e]
+                        (.stopPropagation e)
                         (swap! state
                                #(-> %
-                                    (dissoc :selected-circle)
-                                    (update :history-index dec))))}
-           "Undo"]
-          [:button
-           {:disabled (= history-index (dec (count history)))
-            :on-click #(swap! state update :history-index inc)}
-           "Redo"]]
-         [:div ; get flex layout, let svg have position: relative so I can get bounds
-          [:svg
-           {:width 600
-            :height 400
-            :on-mouse-leave
-            #(when-not any-transients? (swap! state dissoc :selected-circle))
-            :on-mouse-move
-            (fn [e]
-              (when-not any-transients?  ; keep selection stable in these cases
-                (let [[mx my] (mouse-event-coords e)
-                      circle-sqdist-to-mouse #(squared-dist mx my (:cx %) (:cy %))]
-                  (swap! state assoc :selected-circle
-                         (->> circles
-                              (filter #(< (circle-sqdist-to-mouse %)
-                                          (Math/pow (:r %) 2)))
-                              (apply min-key circle-sqdist-to-mouse))))))
-            :on-click
-            (fn [e]
-              (when-not any-transients?
-                (.stopPropagation e)
-                (let [[mx my] (mouse-event-coords e)
-                      new-circle {:id (str (random-uuid))
-                                  :cx mx :cy my :r initial-circle-radius
-                                  :stroke "black" :stroke-width 1
-                                  :fill "none"}]
-                  (swap! state
-                         #(-> %
-                              (dissoc :menu-pos)
-                              (add-to-history conj new-circle)
-                              (assoc :selected-circle new-circle))))))
-            :on-context-menu
-            (fn [e]
-              (.preventDefault e)
-              (if any-transients?
-                (swap! state close-transients)
-                (swap! state assoc :menu-pos (when selected-circle [(.-pageX e) (.-pageY e)]))))}
-           (for [{:keys [id] :as c} circles
-                 :when (not= c selected-circle)]
-             ^{:key id} [:circle c])
-           ;; always paint this one on top
-           (when selected-circle
-             [:circle (-> selected-circle
-                          (update :r #(or tmp-selected-circle-radius %))
-                          (assoc :fill "lightgray"))])]
-          (when-let [[x y] menu-pos]
-            [:div#popup-menu
-             {:style {:left x :top y}
-              :on-click (fn [e]
-                          (.stopPropagation e)
-                          (swap! state
-                                 #(-> %
-                                      (dissoc :menu-pos)
-                                      (assoc :dialog? true))))}
-             "Adjust diameter..."])]
-         (when dialog?
-           [:dialog {:open true
-                     :on-click #(.stopPropagation %)}
-            (str "Adjust diameter of circle at ("
-                 (:cx selected-circle)
-                 ", "
-                 (:cy selected-circle)
-                 ")")
-            [:input {:type :range
-                     :min "1"
-                     :max max-circle-radius
-                     :value (or tmp-selected-circle-radius (:r selected-circle))
-                     :on-change
-                     (fn [e]
-                       (swap! state assoc :tmp-selected-circle-radius
-                              (edn/read-string (util/evt-value e))))}]])]))))
+                                    (dissoc :menu-pos)
+                                    (assoc :dialog? true))))}
+           "Adjust diameter..."])]
+       (when dialog?
+         [:dialog {:open true
+                   :on-click #(.stopPropagation %)}
+          (str "Adjust diameter of circle at ("
+               (:cx selected-circle)
+               ", "
+               (:cy selected-circle)
+               ")")
+          [:input {:type :range
+                   :min "1"
+                   :max max-circle-radius
+                   :value (or tmp-selected-circle-radius (:r selected-circle))
+                   :on-change
+                   (fn [e]
+                     (swap! state assoc :tmp-selected-circle-radius
+                            (edn/read-string (util/evt-value e))))}]])])
+    (finally
+      (.removeEventListener js/document "click" global-listener)
+      (.removeEventListener js/document "contextmenu" global-listener))))
+
 
 (comment
   (js->clj evt)
