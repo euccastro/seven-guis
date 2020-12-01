@@ -24,3 +24,30 @@ svg {
     background-color: white;
     outline: 1px solid black;
 }
+
+#popup-menu {
+    position: absolute;
+    cursor: default;
+    background-color: white;
+    text-align: center;
+    font-family: sans-serif;
+    font-size: 90%;
+    padding: 4px 8px;
+    border-radius: 4px;
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+}
+
+#popup-menu:hover {
+    background-color: lightgray;
+}
+
+dialog {
+    border: 1px solid gray;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+}
+
+dialog input {
+    padding: 12px;
+}
