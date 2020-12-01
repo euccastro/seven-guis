@@ -1,0 +1,19 @@
+#left {
+    background-color: green;
+}
+
+#right {
+    background-color: red;
+}
+
+footer {
+    background-color: blue;
+}
+ul {
+    list-style-type: none;
+}
+
+li.selected {
+    color: white;
+    background-color: darkblue;
+}
