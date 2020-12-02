@@ -46,6 +46,8 @@
 
 
 (defn cell-key [col row]
+  (assert (and (string? col) (integer? row))
+          "got these swapped?")
   (str col row))
 
 
