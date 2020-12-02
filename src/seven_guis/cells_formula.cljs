@@ -49,7 +49,7 @@
   (pop-token "abc(1,2.3)")
   (pop-token (second *1)))
 
-
+;; XXX: use clojure.core/halt-when instead?
 (defn bail-with
   "Transducer that reduces to an item if it matches `f`"
   [f]
@@ -64,14 +64,12 @@
 
 
 (defn tokenize [src]
-  (transduce
-   (comp (map first) ; collect tokens, ignore remaining sources
-         (bail-with #(= (:type %) :error))
-         (take-while #(not= (:type %) :eof))
-         (remove #(= (:type %) :whitespace)))
-   conj
-   []
-   (iterate #(pop-token (second %)) (pop-token src))))
+  (into []
+        (comp (map first) ; collect tokens, ignore remaining sources
+              (bail-with #(= (:type %) :error))
+              (take-while #(not= (:type %) :eof))
+              (remove #(= (:type %) :whitespace)))
+        (iterate #(pop-token (second %)) (pop-token src))))
 
 
 (comment
@@ -89,13 +87,7 @@
      types))
 
 
-(defn watch-range [a b]
-  ;; XXX
-  #{"A1" "B2" "C3"})
-
-
 (declare pop-ast)
-
 
 (defn collect-args
   "return [error-msg args remaining-tokens]"
@@ -161,28 +153,62 @@
   (ast (tokenize "sum(1, mul(A1:B2,2, neg(C3))"))
   (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5")))
 
+
+(defmulti compile
+  "AST node -> compiled formula or error (see docstring for `parse`)"
+  :type)
+
+
+(defmethod compile :default
+  [x]
+  (assert false, (str "Unknown AST element: " (pr-str x)) ))
+
+
+(defmethod compile :error [x] x)
+
+
+(def builtins
+  {"sum" +
+   "sub" -
+   "mul" *
+   "div" /})
+
+
+(defn fuzzy-cat
+  "Transducer that `cat`s seqable elements only"
+  [rf]
+  (let [rf1 (#'cljs.core/preserving-reduced rf)]
+    (fn
+      ([] (rf))
+      ([result] (rf result))
+      ([accum input]
+       (if (seqable? input)
+         (reduce rf1 accum input)
+         (rf accum input))))))
+
 (comment
-  (defmulti compile
-    "AST node -> compiled formula or error (see docstring for `parse`)"
-    :type)
+  (into [1 2] fuzzy-cat [3 [4] [5 [6]]]) ;; => [1 2 3 4 5 [6]]
+  )
 
-  (defmethod compile :error identity)
+(defmethod compile :call
+  [{:keys [f args]}]
+  (let [compiled-args (map compile args)]
+    (fn [watch-m]
+      (apply (builtins f)
+             (into []
+                   fuzzy-cat
+                   ((apply juxt compiled-args) watch-m))))))
 
-  (defmethod compile :default
-    [x]
-    (assert false, (str "Unknown AST element: " (pr-str x)) ))
+(comment
 
 
 
-  (def builtins
-    {"sum" +
-     "sub" -
-     "mul" *
-     "div" /})
+  (defn watch-range [a b]
+    ;; XXX
+    #{"A1" "B2" "C3"})
 
-  (defmethod compile :call
-    [{:keys [f args]}x]
-    (let [f (builtins (:f x))]))
+
+
 
 
   (comment
