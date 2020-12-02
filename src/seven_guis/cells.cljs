@@ -49,21 +49,57 @@
   (str col row))
 
 
-(defn cell [k cursors]
+(defn would-introduce-cycles? [k watches deps]
+  (loop [visited #{}
+         [x & frontier-rest] watches]
+    (cond
+      (nil? x) false
+      (= x k) true
+      :else (recur (conj visited x)
+                   (concat frontier-rest (remove visited (get deps x)))))))
+
+
+(comment
+  ;; In production code I'd add property-based tests for this.
+  (would-introduce-cycles? "A1" '() {})
+  (would-introduce-cycles? "A1" '("A1") {})
+  (would-introduce-cycles? "A1" '("B1") {})
+  (would-introduce-cycles? "A1" '("B1" "C1") {"B1" '("C1")})
+  (would-introduce-cycles? "A1" '("B1") {"C1" '("A1")})
+  (would-introduce-cycles? "A1" '("B1" "C1") {"B1" '("C1")
+                                              "C1" '("A1")})
+  )
+
+
+(defn cell [k cursors deps]
   (r/with-let [my-cursor (get cursors k)
                source (r/atom "")
                edit-text (r/atom nil)
-               formula-reaction (ratom/run! (compute-formula (mock-parse-formula @source) cursors))
+               source-reaction (ratom/run!
+                                (let [{:keys [watches] :as formula} (mock-parse-formula @source)]
+                                  (if (would-introduce-cycles? k watches @deps)
+                                    {:error "ERROR: Formula would introduce cycles"}
+                                    formula)))
+               formula-reaction (ratom/run!
+                                 (let [{:keys [error] :as formula} @source-reaction]
+                                   (if error
+                                     error
+                                     (compute-formula formula cursors))))
+               _ (add-watch source-reaction k
+                            (fn [_ _ _ {:keys [error watches]}]
+                              (when-not error
+                                (swap! deps assoc k watches))))
                _ (add-watch formula-reaction k
                             (fn [_ _ _ new-val]
-                              (println "New val!" new-val)
                               (reset! my-cursor new-val)))]
     [:td {:title k     ; tooltip to double-check you're editing the right cell
           :on-double-click #(reset! edit-text @source)}
      (if (some? @edit-text)
        [cell-editor edit-text source]
        (str @my-cursor))]
-    (finally (ratom/dispose! formula-reaction))))
+    (finally
+      (ratom/dispose! formula-reaction)
+      (ratom/dispose! source-reaction))))
 
 
 (defn cells []
@@ -71,7 +107,9 @@
         cursors (into {}
                       (for [row rows
                             col cols]
-                        [(cell-key col row) (r/cursor state [:cell-contents [row col]])]))]
+                        [(cell-key col row) (r/cursor state [:cell-contents [row col]])]))
+        ;; for cycle detection
+        deps (atom {})]
     (fn []
       [:table
        [:thead
@@ -86,7 +124,7 @@
            (for [col cols
                  :let [k (cell-key col row)]]
              ^{:key k}
-             [cell k cursors])])]])))
+             [cell k cursors deps])])]])))
 
 
 (rdom/render [cells]
