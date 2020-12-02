@@ -127,7 +127,10 @@
   (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3))"))
   (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5")))
 
-(defn compile [ast] ,,,)
+(defn compile [ast]
+  (if (:error ast)
+    ast
+    :XXX))
 
 
 (comment
