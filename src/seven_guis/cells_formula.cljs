@@ -162,20 +162,48 @@
   (ast (tokenize "sum(1, mul(A1:B2,2, neg(C3))"))
   (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5")))
 
-(defn compile [ast]
-  (if (:error ast)
-    ast
-    :XXX))
-
-
 (comment
-  (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5")))
+  (defmulti compile
+    "AST node -> compiled formula or error (see docstring for `parse`)"
+    :type)
 
-(defn parse-formula [src]
-  (some-> src tokenize ast compile)
-  #_(when (str/starts-with? src "=")
-    (parse-node (subs src 1))))
+  (defmethod compile :error identity)
 
-(defn parse [src]
+  (defmethod compile :default
+    [x]
+    (assert false, (str "Unknown AST element: " (pr-str x)) ))
+
+
+
+  (def builtins
+    {"sum" +
+     "sub" -
+     "mul" *
+     "div" /})
+
+  (defmethod compile :call
+    [{:keys [f args]}x]
+    (let [f (builtins (:f x))]))
+
+
+  (comment
+    (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5")))
+
+  (defn parse-formula
+    [src]
+    (when (str/starts-with? src "=")
+      (-> src (subs 1) tokenize ast compile))))
+
+(defn parse-formula
+  [str]
+  nil)
+
+
+(defn parse
+  "return a compiled formula, of the form
+  {:watches #{cell-id...} :f ([watch-m] -> number)}
+  or {:error msg} if this looks like a broken formula."
+  [src]
   (or (parse-formula src)
-      {:f (constantly (or (parse-number src) src))}))
+      {:watches #{}
+       :f (constantly (or (parse-number src) src))}))
