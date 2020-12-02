@@ -26,6 +26,7 @@
    [:whitespace #"^\s+"]])
 
 
+;; XXX: report errors
 (defn pop-token [src]
   (reduce (fn [_ [k regex]]
             (let [match (when-let [x (re-find regex src)]
