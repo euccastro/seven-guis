@@ -3,7 +3,7 @@
             [reagent.dom :as rdom]
             [reagent.ratom :as ratom]
             [seven-guis.util :as util]
-            [seven-guis.cells-formula :refer [parse-formula]]))
+            [seven-guis.cells-formula :as formula]))
 
 
 (def rows (range 100))
@@ -68,7 +68,7 @@
                source (r/atom "")
                edit-text (r/atom nil)
                source-reaction (ratom/run!
-                                (let [{:keys [watches] :as formula} (parse-formula @source)]
+                                (let [{:keys [watches] :as formula} (formula/parse @source)]
                                   (if (would-introduce-cycles? k watches @deps)
                                     {:error "ERROR: Formula would introduce cycles"}
                                     formula)))
