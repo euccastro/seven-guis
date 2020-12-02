@@ -123,6 +123,9 @@
       (seq leftovers) {:error (apply str "Unexpected extra input: " (map :src leftovers))}
       :else ast)))
 
+(comment
+  (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3))"))
+  (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5")))
 
 (defn compile [ast] ,,,)
 
