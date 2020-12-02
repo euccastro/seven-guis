@@ -3,7 +3,7 @@
             [reagent.dom :as rdom]
             [reagent.ratom :as ratom]
             [seven-guis.util :as util]
-            [clojure.string :as str]))
+            [seven-guis.cells-formula :refer [parse-formula]]))
 
 
 (def rows (range 100))
@@ -29,16 +29,6 @@
                   (reset! source t)
                   (reset! edit-text nil)))
     :on-change #(reset! edit-text (util/evt-value %))}])
-
-
-(defn mock-parse-formula [src]
-  (let [watches (map second
-                     (re-seq #"\{\{(\w+)\}\}" src))]
-    {:watches watches
-     :f (fn [watch-m]
-          (if (seq watch-m)
-            (pr-str watch-m)
-            src))}))
 
 
 (defn compute-formula [{:keys [watches f]} cursors]
@@ -78,7 +68,7 @@
                source (r/atom "")
                edit-text (r/atom nil)
                source-reaction (ratom/run!
-                                (let [{:keys [watches] :as formula} (mock-parse-formula @source)]
+                                (let [{:keys [watches] :as formula} (parse-formula @source)]
                                   (if (would-introduce-cycles? k watches @deps)
                                     {:error "ERROR: Formula would introduce cycles"}
                                     formula)))
