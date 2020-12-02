@@ -1,7 +1,14 @@
 (ns seven-guis.cells-formula
   (:require [seven-guis.util :as util]
+            [clojure.set :as set]
             [clojure.string :as str]
             [clojure.edn :as edn]))
+
+
+(defn cell-key [col row]
+  (assert (and (string? col) (integer? row))
+          "got these swapped?")
+  (str col row))
 
 
 (defn parse-number [src]
@@ -132,6 +139,7 @@
 
 
 (comment
+  (pop-ast (tokenize "A1"))
   (pop-ast (tokenize "sum(1, 2,)"))
   (pop-ast (tokenize "sum(1, mul(2, 3))"))
   (pop-ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5"))
@@ -164,7 +172,48 @@
   (assert false, (str "Unknown AST element: " (pr-str x)) ))
 
 
-(defmethod compile :error [x] x)
+(defmethod compile :error [{:keys [msg]}]
+  {:type :error  ; make recognizable so it can bubble up
+   :watches #{}
+   :f (constantly msg)})
+
+
+(defmethod compile :number [{:keys [src]}]
+  {:watches #{}
+   :f (constantly (edn/read-string src))})
+
+
+(defmethod compile :coord [{:keys [src]}]
+  {:watches #{src}
+   :f #(get % src)})
+
+
+(defn watch-range [start end]
+  (let [[start-number end-number] (->> [start end]
+                                       (map #(subs % 1))
+                                       (map edn/read-string))]
+    (for [row (range start-number (inc end-number))
+          col (util/char-range start end)]
+      (cell-key col row))))
+
+(comment
+
+  (subs "A1" 1)
+  (def start "A1")
+  (def end "B3")
+  (watch-range "A11" "B1")
+  ;; => ()
+  ;; but I won't reverse them to catch this case because order is possibly
+  ;; significant (e.g., when calling sub)
+  )
+
+(defmethod compile :range [{:keys [start end]}]
+  (let [watches (watch-range start end)]
+    (if (seq watches)
+      {:watches (set watches)
+       :f #(map % watches)}
+      ;; disable this since it's most likely a puzzling typo
+      (compile {:type :error :msg "TYPE ERROR: empty range"}))))
 
 
 (def builtins
@@ -177,6 +226,8 @@
 (defn fuzzy-cat
   "Transducer that `cat`s seqable elements only"
   [rf]
+  ;; In production code I'd copy the definition of `preserving-reduced` here
+  ;; instead.
   (let [rf1 (#'cljs.core/preserving-reduced rf)]
     (fn
       ([] (rf))
@@ -190,38 +241,54 @@
   (into [1 2] fuzzy-cat [3 [4] [5 [6]]]) ;; => [1 2 3 4 5 [6]]
   )
 
+
 (defmethod compile :call
   [{:keys [f args]}]
-  (let [compiled-args (map compile args)]
-    (fn [watch-m]
-      (apply (builtins f)
-             (into []
-                   fuzzy-cat
-                   ((apply juxt compiled-args) watch-m))))))
+  (let [compiled-args (map compile args)
+        error (first (filter #(= (:type %) :error)
+                             compiled-args))]
+    (or error
+        {:watches
+         (apply set/union (map :watches compiled-args))
+         :f
+         (fn [watch-m]
+           (transduce (comp (map #((:f %) watch-m))
+                            fuzzy-cat)
+                      (builtins f)
+                      compiled-args))})))
+
+
+(defn check-top-level-range [{:keys [type] :as ast}]
+  (if (= type :range)
+    {:type :error :msg "SYNTAX ERROR: cannot use range on its own as a formula"}
+    ast))
+
+(defn parse-formula
+  [src]
+  (when (str/starts-with? src "=")
+    (-> src (subs 1) tokenize ast check-top-level-range compile)))
 
 (comment
 
+  ((juxt) 5)
 
+  (defn test-parse-formula [src]
+    ((-> (parse-formula (str "=" src)) :f) {"A1" 1 "A2" 2}))
 
-  (defn watch-range [a b]
-    ;; XXX
-    #{"A1" "B2" "C3"})
-
-
-
-
-
-  (comment
-    (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5")))
-
-  (defn parse-formula
-    [src]
-    (when (str/starts-with? src "=")
-      (-> src (subs 1) tokenize ast compile))))
-
-(defn parse-formula
-  [str]
-  nil)
+  (-> "A1:A2" tokenize ast)
+  (test-parse-formula "1")
+  (test-parse-formula "A1")
+  (test-parse-formula "A1:A2")
+  (test-parse-formula "sum()")
+  (test-parse-formula "sum(2)")
+  (test-parse-formula "sum(2, 3)")
+  (test-parse-formula "sum(A1,2)")
+  (test-parse-formula "sum(A1,A2)")
+  (test-parse-formula "sum(A1:A2)")
+  (test-parse-formula "sum(1, A1:A2)")
+  ;; nested errors bubble up
+  (test-parse-formula "sum(5, sub(2, A2:A1))")
+)
 
 
 (defn parse

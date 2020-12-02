@@ -8,6 +8,19 @@
   )
 
 
+(defn char-range
+  "range of characters from the first letter of `start` to the first letter of end"
+  [start end]
+  (map #(.fromCharCode js/String %)
+       (range (.charCodeAt start) (inc (.charCodeAt end)))))
+
+(comment
+  (char-range "A" "Z")
+;; => ("A" "B" "C" ... "Z")
+  (char-range "A11" "C22")
+;; => ("A" "B" "C")
+  )
+
 (defn read-edn-if-valid
   "Returns nil on invalid edn, instead of crashing"
   [s]

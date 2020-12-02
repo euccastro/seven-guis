@@ -7,9 +7,7 @@
 
 
 (def rows (range 100))
-
-
-(def cols "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+(def cols (util/char-range "A" "Z"))
 
 
 (defn cell-editor [edit-text source]
@@ -33,12 +31,6 @@
 
 (defn compute-formula [{:keys [watches f]} cursors]
   (f (zipmap watches (map (comp deref cursors) watches))))
-
-
-(defn cell-key [col row]
-  (assert (and (string? col) (integer? row))
-          "got these swapped?")
-  (str col row))
 
 
 (defn would-introduce-cycles? [k watches deps]
@@ -99,7 +91,7 @@
         cursors (into {}
                       (for [row rows
                             col cols]
-                        [(cell-key col row) (r/cursor state [:cell-contents [row col]])]))
+                        [(formula/cell-key col row) (r/cursor state [:cell-contents [row col]])]))
         ;; for cycle detection
         deps (atom {})]
     (fn []
@@ -114,7 +106,7 @@
           [:tr
            [:th row]
            (for [col cols
-                 :let [k (cell-key col row)]]
+                 :let [k (formula/cell-key col row)]]
              ^{:key k}
              [cell k cursors deps])])]])))
 
