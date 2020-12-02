@@ -122,9 +122,8 @@
     [(first tokens) (rest tokens)]
 
     (match-types? tokens [:coord :colon :coord])
-    (let [[start _ end & rest] tokens
-          watches (watch-range (:src start) (:src end))]
-      [{:type :range :watches watches}
+    (let [[start _ end & rest] tokens]
+      [{:type :range :start (:src start) :end (:src end)}
        rest])
 
     (match-types? tokens [:coord])
