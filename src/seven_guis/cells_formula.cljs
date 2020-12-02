@@ -10,11 +10,6 @@
       edn)))
 
 
-(def formula-fns
-  {"sum" +
-   "mul" *})
-
-
 (def token-regexes
   [[:coord #"^[A-Z]\d{1,2}(?!\w)"]
    [:number #"^-?\d+(\.\d+)?(?!\w)"]
@@ -26,19 +21,25 @@
    [:whitespace #"^\s+"]])
 
 
-;; XXX: report errors
-(defn pop-token [src]
-  (reduce (fn [_ [k regex]]
-            (let [match (when-let [x (re-find regex src)]
-                          (if (vector? x)
-                            (first x)
-                            x))]
-              (when match
-                (reduced [{:type k
-                           :src match}
-                          (subs src (count match))]))))
-          nil
-          token-regexes))
+(defn pop-token
+  "return [{:type ... :src ...} remainder-of-src]"
+  [src]
+  (or
+   (when (empty? src) [{:type :eof} ""])
+   (reduce (fn [_ [k regex]]
+             (let [match (when-let [x (re-find regex src)]
+                           (if (vector? x)
+                             (first x)
+                             x))]
+               (when match
+                 (reduced [{:type k
+                            :src match}
+                           (subs src (count match))]))))
+           nil
+           token-regexes)
+   [{:type :error
+     :msg (str "SYNTAX ERROR: unrecognized token at " (pr-str src))
+     :src src} ""]))
 
 
 (comment
@@ -49,25 +50,37 @@
   (pop-token (second *1)))
 
 
+(defn bail-with
+  "Transducer that reduces to an item if it matches `f`"
+  [f]
+  (fn [xf]
+    (fn
+      ([] (xf))
+      ([result] (xf result))
+      ([accum x]
+       (if (f x)
+         (reduced x)
+         (xf accum x))))))
+
+
 (defn tokenize [src]
-  (loop [tokens []
-         src src]
-    (if (empty? src)
-      tokens
-      (let [[{:keys [type] :as token}
-             rest
-             :as result]
-            (pop-token src)]
-        (when result
-          (recur
-           (cond-> tokens
-             (not= type :whitespace)
-             (conj token))
-           rest))))))
+  (transduce
+   (comp (map first) ; collect tokens, ignore remaining sources
+         (bail-with #(= (:type %) :error))
+         (take-while #(not= (:type %) :eof))
+         (remove #(= (:type %) :whitespace)))
+   conj
+   []
+   (iterate #(pop-token (second %)) (pop-token src))))
 
 
 (comment
+  [nil "abc(1,A0,mul(-2.3, B3))"]
+  (pop-token (second *1))
+  (tokenize "(1)")
   (tokenize "abc(1,A0,mul(-2.3, B3))")
+  (def ret *1)
+  (type (last ret))
   (tokenize "abc(1,A0,||????|||mul(-2.3, B3))"))
 
 
@@ -76,8 +89,30 @@
      types))
 
 
-(defn watch-range [a b] :XXX)
+(defn watch-range [a b]
+  ;; XXX
+  #{"A1" "B2" "C3"})
 
+
+(declare pop-ast)
+
+
+(defn collect-args
+  "return [error-msg args remaining-tokens]"
+  [tokens]
+  (loop [args [] tokens tokens]
+    (cond
+      (empty? tokens) ["SYNTAX ERROR: unexpected EOF" nil tokens]
+      (match-types? tokens [:close-paren]) [nil args (rest tokens)]
+      :else
+      (let [[arg tokens] (pop-ast tokens)]
+        (if (= (:type arg) :error)
+          [(:msg arg) nil tokens]
+          (recur (conj args arg)
+                 (cond-> tokens
+                   ;; We allow a trailing comma in the arglist, for no strong
+                   ;; reason.
+                   (match-types? tokens [:comma]) rest)))))))
 
 (defn pop-ast
   [tokens]
@@ -96,36 +131,35 @@
     [(first tokens) (rest tokens)]
 
     (match-types? tokens [:symbol :open-paren])
-    (let [f (:src (first tokens))]
-      (loop [args []
-             tokens (drop 2 tokens)]
-        (if (match-types? tokens [:close-paren])
-          [{:type :call :f f :args args}
-           (rest tokens)]
-          (let [[arg tokens] (pop-ast tokens)]
-            (if (:error arg)
-              arg
-              (recur (conj args arg)
-                     (cond-> tokens
-                       (match-types? tokens [:comma]) rest)))))))
+    (let [f (:src (first tokens))
+          [error-msg args remaining-tokens] (collect-args (drop 2 tokens))]
+      (if error-msg
+        [{:type :error :msg error-msg}]
+        [{:type :call :f f :args args} remaining-tokens]))
     :else
-    [{:error (str "Unexpected token: " (:src (first tokens)))}]))
+    [{:type :error :msg (str "Unexpected token: " (pr-str (:src (first tokens))))}]))
+
 
 (comment
-  (pop-ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5")))
+  (pop-ast (tokenize "sum(1, 2,)"))
+  (pop-ast (tokenize "sum(1, mul(2, 3))"))
+  (pop-ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5"))
+  (pop-ast (tokenize "1 sum(1, mul(A1:B2,2), neg(C3)) 5")))
 
 
 (defn ast
   "Return the abstract syntax tree of the expression in the tokens, or error."
   [tokens]
-  (let [[{:keys [error] :as ast} leftovers] (pop-ast tokens)]
+  (let [[{:keys [type] :as ast} leftovers] (pop-ast tokens)]
     (cond
-      error ast
-      (seq leftovers) {:error (apply str "Unexpected extra input: " (map :src leftovers))}
+      (= type :error) ast  ; this will probably be more useful than the one about leftovers
+      (seq leftovers) {:type :error :msg (apply str "Unexpected extra input: " (map :src leftovers))}
       :else ast)))
 
 (comment
   (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3))"))
+  ;; missing a closing paren
+  (ast (tokenize "sum(1, mul(A1:B2,2, neg(C3))"))
   (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5")))
 
 (defn compile [ast]
