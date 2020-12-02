@@ -12,4 +12,5 @@
 ***** watches the value cursors of input cells it depends on
 ***** updates its own value cursor on changes
 ***** this ratom is not watched by anyone else, so it can be internal to the component
+      XXX we may need to make it global for cycle detection
 ***** we can dispose of any existing one when we update the formula
