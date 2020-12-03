@@ -44,41 +44,35 @@
      :msg (str "SYNTAX ERROR: unrecognized token at " (pr-str src))
      :src src} ""]))
 
-
 (comment
   (pop-token "")
   (pop-token "|")
   (pop-token "1")
+  (pop-token "1b")
   (pop-token "abc(1,2.3)")
   (pop-token (second *1)))
 
-;; XXX: use clojure.core/halt-when instead?
-(defn bail-with
-  "Transducer that reduces to an item if it matches `f`"
-  [f]
-  (fn [xf]
-    (fn
-      ([] (xf))
-      ([result] (xf result))
-      ([accum x]
-       (if (f x)
-         (reduced x)
-         (xf accum x))))))
-
 
 (defn tokenize [src]
-  (into []
-        (comp (map first) ; collect tokens, ignore remaining sources
-              (bail-with #(= (:type %) :error))
-              (take-while #(not= (:type %) :eof))
-              (remove #(= (:type %) :whitespace)))
-        (iterate #(pop-token (second %)) (pop-token src))))
+  ;; Almost equivalent to (into [] (comp ...) (iterate ...)), except that that
+  ;; breaks `halt-when` because of some problem with transients.
+  (transduce
+   (comp (map first) ; collect tokens, ignore remaining sources
+         (halt-when #(= (:type %) :error) (fn [_ v]
+                                            (vector v)))
+         (take-while #(not= (:type %) :eof))
+         (remove #(= (:type %) :whitespace)))
+   conj
+   []
+   (iterate #(pop-token (second %)) (pop-token src))))
 
 
 (comment
   [nil "abc(1,A0,mul(-2.3, B3))"]
+  (pop-token "1b")
   (pop-token (second *1))
   (tokenize "(1)")
+  (tokenize "1b")
   (tokenize "abc(1,A0,mul(-2.3, B3))")
   (def ret *1)
   (type (last ret))
@@ -113,6 +107,9 @@
   [tokens]
   (cond
 
+    (match-types? tokens [:error])
+    [(first tokens) []]
+
     (match-types? tokens [:number])
     [(first tokens) (rest tokens)]
 
@@ -131,10 +128,11 @@
         [{:type :error :msg error-msg}]
         [{:type :call :f f :args args} remaining-tokens]))
     :else
-    [{:type :error :msg (str "Unexpected token: " (pr-str (:src (first tokens))))}]))
+    [{:type :error :msg (str "ERROR: Unexpected token " (pr-str (:src (first tokens))))}]))
 
 
 (comment
+  (pop-ast (tokenize "sum()"))
   (pop-ast (tokenize "A1"))
   (pop-ast (tokenize "sum(1, 2,)"))
   (pop-ast (tokenize "sum(1, mul(2, 3))"))
@@ -181,10 +179,16 @@
 
 (defmethod compile :coord [{:keys [src]}]
   {:watches #{src}
-   :f #(get % src)})
+   :f (fn [watch-m]
+        (let [val (get watch-m src)]
+          (if (number? val)
+            val
+            ;; Avoid parroting the original error so it's easier to tell in
+            ;; which cell it actually originated.
+            (str "ERROR in referred cell " src))))})
 
 
-(defn watch-range [start end]
+(defn cell-range [start end]
   (let [[start-number end-number] (->> [start end]
                                        (map #(subs % 1))
                                        (map edn/read-string))]
@@ -197,19 +201,29 @@
   (subs "A1" 1)
   (def start "A1")
   (def end "B3")
-  (watch-range "A11" "B1")
+  (cell-range "A11" "B1")
   ;; => ()
   ;; but I won't reverse them to catch this case because order is possibly
   ;; significant (e.g., when calling sub)
   )
 
+(def not-number? (complement number?))
+
+
 (defmethod compile :range [{:keys [start end]}]
-  (let [watches (watch-range start end)]
+  (let [watches (cell-range start end)]
     (if (seq watches)
       {:watches (set watches)
-       :f #(map % watches)}
+       :f (fn [watch-m]
+            (let [erroring-watches (filter #(-> % watch-m not-number?) watches)]
+              (if (seq erroring-watches)
+                (str "ERROR in referred cell"
+                     (when (> (count erroring-watches) 1) "s")
+                     " "
+                     (str/join ", " erroring-watches))
+                (map watch-m watches))))}
       ;; disable this since it's most likely a puzzling typo
-      (compile {:type :error :msg "TYPE ERROR: empty range"}))))
+      (compile {:type :error :msg (str "ERROR: empty range " start ":" end)}))))
 
 
 (def builtins
@@ -233,6 +247,7 @@
          (reduce rf1 accum input)
          (rf accum input))))))
 
+
 (comment
   (into [1 2] fuzzy-cat [3 [4] [5 [6]]]) ;; => [1 2 3 4 5 [6]]
   )
@@ -249,6 +264,7 @@
          :f
          (fn [watch-m]
            (transduce (comp (map #((:f %) watch-m))
+                            (halt-when not-number?)
                             fuzzy-cat)
                       (builtins f)
                       compiled-args))})))
@@ -265,8 +281,6 @@
     (-> src (subs 1) tokenize ast check-top-level-range compile)))
 
 (comment
-
-  ((juxt) 5)
 
   (defn test-parse-formula [src]
     ((-> (parse-formula (str "=" src)) :f) {"A1" 1 "A2" 2}))
