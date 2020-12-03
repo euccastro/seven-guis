@@ -236,9 +236,17 @@
 
 (def builtins
   {"sum" +
-   "sub" -
+   "sub" (fn
+           ([] 0)
+           ([x] (- x))
+           ([x y] (- x y))
+           ([x y & args] (apply - x y args)))
    "mul" *
-   "div" /})
+   "div" (fn
+           ([] 1)
+           ([x] (/ x))
+           ([x y] (/ x y))
+           ([x y & args] (apply / x y args)))})
 
 
 (defn fuzzy-cat
@@ -257,6 +265,8 @@
 
 
 (comment
+  (/ 2)
+  (- 5)
   (into [1 2] fuzzy-cat [3 [4] [5 [6]]]) ;; => [1 2 3 4 5 [6]]
   )
 
@@ -275,11 +285,14 @@
            (apply set/union (map :watches compiled-args))
            :f
            (fn [watch-m]
-             (transduce (comp (map #((:f %) watch-m))
-                              (halt-when string?)
-                              fuzzy-cat)
-                        (builtins f)
-                        compiled-args))}))))
+             (apply
+              (builtins f)
+              (transduce (comp (map #((:f %) watch-m))
+                               (halt-when string?)
+                               fuzzy-cat)
+                         conj
+                         []
+                         compiled-args)))}))))
 
 
 (defn check-top-level-range [{:keys [type] :as ast}]
