@@ -11,10 +11,6 @@
   (str col row))
 
 
-(defn parse-number [src]
-  (let [edn (util/read-edn-if-valid src)]
-    (when (number? edn)
-      edn)))
 
 
 (def token-regexes
@@ -299,6 +295,12 @@
   ;; nested errors bubble up
   (test-parse-formula "sum(5, sub(2, A2:A1))")
 )
+
+
+(defn parse-number [src]
+  (let [edn (util/read-edn-if-valid src)]
+    (when (number? edn)
+      edn)))
 
 
 (defn parse
