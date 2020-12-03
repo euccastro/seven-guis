@@ -3,7 +3,9 @@
 
 Clojurescript implementation of [7GUIs](https://eugenkiss.github.io/7guis/tasks/)
 
-To run,
+[Demo](https://euccastro.github.io/seven-guis/)
+
+To run/tweak,
 
 - [Install Clojure](https://clojure.org/guides/getting_started) if necessary, and
 - run `clj -M -m figwheel.main -b <task>`
