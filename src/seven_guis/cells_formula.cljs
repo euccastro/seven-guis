@@ -264,8 +264,8 @@
          :f
          (fn [watch-m]
            (transduce (comp (map #((:f %) watch-m))
-                            (halt-when not-number?)
-                            fuzzy-cat)
+                            fuzzy-cat
+                            (halt-when not-number?))
                       (builtins f)
                       compiled-args))})))
 
