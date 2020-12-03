@@ -263,19 +263,23 @@
 
 (defmethod compile :call
   [{:keys [f args]}]
-  (let [compiled-args (map compile args)
-        error (first (filter #(= (:type %) :error)
-                             compiled-args))]
-    (or error
-        {:watches
-         (apply set/union (map :watches compiled-args))
-         :f
-         (fn [watch-m]
-           (transduce (comp (map #((:f %) watch-m))
-                            (halt-when string?)
-                            fuzzy-cat)
-                      (builtins f)
-                      compiled-args))})))
+  (if-not (builtins f)
+    {:type :error
+     :watches #{}
+     :f (constantly (str "ERROR: unrecognized symbol " (pr-str f)))}
+    (let [compiled-args (map compile args)
+          error (first (filter #(= (:type %) :error)
+                               compiled-args))]
+      (or error
+          {:watches
+           (apply set/union (map :watches compiled-args))
+           :f
+           (fn [watch-m]
+             (transduce (comp (map #((:f %) watch-m))
+                              (halt-when string?)
+                              fuzzy-cat)
+                        (builtins f)
+                        compiled-args))}))))
 
 
 (defn check-top-level-range [{:keys [type] :as ast}]
