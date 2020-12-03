@@ -11,6 +11,7 @@
   (str col row))
 
 
+;;; lexer
 
 
 (def token-regexes
@@ -53,11 +54,14 @@
   ;; Almost equivalent to (into [] (comp ...) (iterate ...)), except that that
   ;; breaks `halt-when` because of some problem with transients.
   (transduce
-   (comp (map first) ; collect tokens, ignore remaining sources
-         (halt-when #(= (:type %) :error) (fn [_ v]
-                                            (vector v)))
-         (take-while #(not= (:type %) :eof))
-         (remove #(= (:type %) :whitespace)))
+   (comp
+    ;; collect tokens, ignore remaining sources
+    (map first)
+    ;; abort on errors and make them bubble up
+    (halt-when #(= (:type %) :error) (fn [_ v] (vector v)))
+    ;; normal terminating condition
+    (take-while #(not= (:type %) :eof))
+    (remove #(= (:type %) :whitespace)))
    conj
    []
    (iterate #(pop-token (second %)) (pop-token src))))
@@ -75,7 +79,10 @@
   (tokenize "abc(1,A0,||????|||mul(-2.3, B3))"))
 
 
-(defn match-types? [tokens types]
+;;; parser
+
+
+(defn starts-with-types? [tokens types]
   (= (take (count types) (map :type tokens))
      types))
 
@@ -88,7 +95,7 @@
   (loop [args [] tokens tokens]
     (cond
       (empty? tokens) ["SYNTAX ERROR: unexpected EOF" nil tokens]
-      (match-types? tokens [:close-paren]) [nil args (rest tokens)]
+      (starts-with-types? tokens [:close-paren]) [nil args (rest tokens)]
       :else
       (let [[arg tokens] (pop-ast tokens)]
         (if (= (:type arg) :error)
@@ -97,27 +104,27 @@
                  (cond-> tokens
                    ;; We allow a trailing comma in the arglist, for no strong
                    ;; reason.
-                   (match-types? tokens [:comma]) rest)))))))
+                   (starts-with-types? tokens [:comma]) rest)))))))
 
 (defn pop-ast
   [tokens]
   (cond
 
-    (match-types? tokens [:error])
+    (starts-with-types? tokens [:error])
     [(first tokens) []]
 
-    (match-types? tokens [:number])
+    (starts-with-types? tokens [:number])
     [(first tokens) (rest tokens)]
 
-    (match-types? tokens [:coord :colon :coord])
+    (starts-with-types? tokens [:coord :colon :coord])
     (let [[start _ end & rest] tokens]
       [{:type :range :start (:src start) :end (:src end)}
        rest])
 
-    (match-types? tokens [:coord])
+    (starts-with-types? tokens [:coord])
     [(first tokens) (rest tokens)]
 
-    (match-types? tokens [:symbol :open-paren])
+    (starts-with-types? tokens [:symbol :open-paren])
     (let [f (:src (first tokens))
           [error-msg args remaining-tokens] (collect-args (drop 2 tokens))]
       (if error-msg
@@ -150,6 +157,10 @@
   ;; missing a closing paren
   (ast (tokenize "sum(1, mul(A1:B2,2, neg(C3))"))
   (ast (tokenize "sum(1, mul(A1:B2,2), neg(C3)) 5")))
+
+
+
+;;; compiler
 
 
 (defmulti compile
@@ -202,6 +213,7 @@
   ;; but I won't reverse them to catch this case because order is possibly
   ;; significant (e.g., when calling sub)
   )
+
 
 (def not-number? (complement number?))
 
@@ -271,29 +283,29 @@
     {:type :error :msg "SYNTAX ERROR: cannot use range on its own as a formula"}
     ast))
 
-(defn parse-formula
+(defn compile-formula
   [src]
   (when (str/starts-with? src "=")
     (-> src (subs 1) tokenize ast check-top-level-range compile)))
 
 (comment
 
-  (defn test-parse-formula [src]
-    ((-> (parse-formula (str "=" src)) :f) {"A1" 1 "A2" 2}))
+  (defn test-compile-formula [src]
+    ((-> (compile-formula (str "=" src)) :f) {"A1" 1 "A2" 2}))
 
   (-> "A1:A2" tokenize ast)
-  (test-parse-formula "1")
-  (test-parse-formula "A1")
-  (test-parse-formula "A1:A2")
-  (test-parse-formula "sum()")
-  (test-parse-formula "sum(2)")
-  (test-parse-formula "sum(2, 3)")
-  (test-parse-formula "sum(A1,2)")
-  (test-parse-formula "sum(A1,A2)")
-  (test-parse-formula "sum(A1:A2)")
-  (test-parse-formula "sum(1, A1:A2)")
+  (test-compile-formula "1")
+  (test-compile-formula "A1")
+  (test-compile-formula "A1:A2")
+  (test-compile-formula "sum()")
+  (test-compile-formula "sum(2)")
+  (test-compile-formula "sum(2, 3)")
+  (test-compile-formula "sum(A1,2)")
+  (test-compile-formula "sum(A1,A2)")
+  (test-compile-formula "sum(A1:A2)")
+  (test-compile-formula "sum(1, A1:A2)")
   ;; nested errors bubble up
-  (test-parse-formula "sum(5, sub(2, A2:A1))")
+  (test-compile-formula "sum(5, sub(2, A2:A1))")
 )
 
 
@@ -303,11 +315,11 @@
       edn)))
 
 
-(defn parse
+(defn compile-src
   "return a compiled formula, of the form
   {:watches #{cell-id...} :f ([watch-m] -> number)}
   or {:error msg} if this looks like a broken formula."
   [src]
-  (or (parse-formula src)
+  (or (compile-formula src)
       {:watches #{}
        :f (constantly (or (parse-number src) src))}))

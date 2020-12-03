@@ -35,7 +35,7 @@
             [reagent.dom :as rdom]
             [reagent.ratom :as ratom]
             [seven-guis.util :as util]
-            [seven-guis.cells-formula :as formula]))
+            [seven-guis.cells-formula :refer [cell-key compile-src]]))
 
 
 (def rows (range 100))
@@ -92,7 +92,8 @@
                source-cursor (get source-cursors k)
                edit-text (r/atom nil)
                source-reaction (ratom/run!
-                                (let [{:keys [watches] :as formula} (formula/parse (or @source-cursor ""))]
+                                (let [{:keys [watches] :as formula}
+                                      (compile-src (or @source-cursor ""))]
                                   (if (would-introduce-cycles? k watches @deps)
                                     {:error "ERROR: Formula would introduce cycles"}
                                     formula)))
@@ -122,7 +123,7 @@
   (into {}
         (for [row rows
               col cols
-              :let [k (formula/cell-key col row)]]
+              :let [k (cell-key col row)]]
           [k (r/cursor state [top-level-k k])])))
 
 
@@ -145,7 +146,7 @@
           [:tr
            [:th row]
            (for [col cols
-                 :let [k (formula/cell-key col row)]]
+                 :let [k (cell-key col row)]]
              ^{:key k}
              [cell k source-cursors value-cursors deps])])]])))
 
