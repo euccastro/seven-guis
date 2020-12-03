@@ -1,0 +1,54 @@
+body {
+    background-color: #e8e8e8;
+}
+
+#root {
+    display: flex;
+    flex-direction: column;
+    justify-content: top;
+    align-items: center;
+}
+
+#buttons {
+    display: flex;
+    justify-content: center;
+}
+
+button {
+    margin: 12px;
+}
+
+svg {
+    position: relative;
+    width: 100%;
+    background-color: white;
+    outline: 1px solid black;
+}
+
+#popup-menu {
+    position: absolute;
+    cursor: default;
+    background-color: white;
+    text-align: center;
+    font-family: sans-serif;
+    font-size: 90%;
+    padding: 4px 8px;
+    border-radius: 4px;
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+}
+
+#popup-menu:hover {
+    background-color: lightgray;
+}
+
+dialog {
+    border: 1px solid gray;
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+}
+
+
+dialog input {
+    margin: 12px 0px;
+}
