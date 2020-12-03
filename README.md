@@ -1,7 +1,7 @@
 7guis
 =====
 
-Clojure implementation of [7GUIs](https://eugenkiss.github.io/7guis/tasks/)
+Clojurescript implementation of [7GUIs](https://eugenkiss.github.io/7guis/tasks/)
 
 To run,
 
