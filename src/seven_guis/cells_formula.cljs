@@ -19,8 +19,8 @@
 
 (def token-regexes
   [[:coord #"^[A-Z]\d{1,2}(?!\w)"]
-   [:number #"^-?\d+(\.\d+)?(?!\w)"]
-   [:symbol #"^\w+"]
+   [:number #"^-?\d+(?:\.\d+)?(?!\w)"]
+   [:symbol #"^[a-zA-Z_]\w+"]
    [:open-paren #"^\("]
    [:comma #"^,"]
    [:close-paren #"^\)"]
@@ -34,14 +34,10 @@
   (or
    (when (empty? src) [{:type :eof} ""])
    (reduce (fn [_ [k regex]]
-             (let [match (when-let [x (re-find regex src)]
-                           (if (vector? x)
-                             (first x)
-                             x))]
-               (when match
-                 (reduced [{:type k
-                            :src match}
-                           (subs src (count match))]))))
+             (when-let [match (re-find regex src)]
+               (reduced [{:type k
+                          :src match}
+                         (subs src (count match))])))
            nil
            token-regexes)
    [{:type :error

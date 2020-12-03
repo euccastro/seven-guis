@@ -1,15 +1,5 @@
 * todo
-** make a single figwheel target and put them all in the same page
-** prevent resizing on mobile
-** cell
-*** throw compile error on invalid range
-    OK
-*** throw compile error on top-level range
-    OK
-*** bubble up compile errors
-    OK
-*** propagate dependent errors gracefully
-** done
+** done; review and document
 *** use reactions
 **** each cell has a value cursor
      the value of this is displayed when the cell is unfocused.  this is what
