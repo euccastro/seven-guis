@@ -91,11 +91,7 @@
     [:div#buttons
      [:button
       {:disabled (< history-index 0)
-       :on-click (fn [_]
-                   (swap! state
-                          #(-> %
-                               (dissoc :selected-circle)
-                               (update :history-index dec))))}
+       :on-click #(swap! state update :history-index dec)}
       "Undo"]
      [:button
       {:disabled (= history-index (dec (count history)))
@@ -165,21 +161,24 @@
 
 
 (defn dialog [state]
-  [:dialog {:open true
-            :on-click #(.stopPropagation %)}
-   (str "Adjust diameter of circle at ("
-        (:cx selected-circle)
-        ", "
-        (:cy selected-circle)
-        ")")
-   [:input {:type :range
-            :min "1"
-            :max max-circle-radius
-            :value (or (:tmp-selected-circle-radius @state) (:r selected-circle))
-            :on-change
-            (fn [e]
-              (swap! state assoc :tmp-selected-circle-radius
-                     (edn/read-string (util/evt-value e))))}]])
+  (let [{:keys [selected-circle
+                tmp-selected-circle-radius]}
+        @state]
+    [:dialog {:open true
+              :on-click #(.stopPropagation %)}
+     (str "Adjust diameter of circle at ("
+          (:cx selected-circle)
+          ", "
+          (:cy selected-circle)
+          ")")
+     [:input {:type :range
+              :min "1"
+              :max max-circle-radius
+              :value (or tmp-selected-circle-radius (:r selected-circle))
+              :on-change
+              (fn [e]
+                (swap! state assoc :tmp-selected-circle-radius
+                       (edn/read-string (util/evt-value e))))}]]))
 
 
 (defn circle-drawer []
