@@ -73,6 +73,13 @@
   (when head
        (if (= head target)
          path
+         ;; Although this is depth-first search, we don't need to check for
+         ;; cycles because by construction we don't have any (preventing
+         ;; dependency cycles is the very purpose of this function in the
+         ;; context of this namespace). Adding an assert would bump the big-O
+         ;; cost of this function for no real benefit. If we had a cycle the
+         ;; user would be screwed already, and it's not clear how we could help
+         ;; them now. So I chose to "optimize for a correct program" here.
          (first (keep #(find-path (cons % path) target succ-fn)
                       (succ-fn head))))))
 
