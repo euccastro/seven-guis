@@ -78,9 +78,7 @@
 
 
 (defn find-dep-cycle [k watches deps]
-  (first (keep #(find-path (cons % nil) k (comp deref (fn [x]
-                                                        (prn "si" x (deps x))
-                                                        (deps x))))
+  (first (keep #(find-path (cons % nil) k (comp deref deps))
                watches)))
 
 
@@ -100,10 +98,10 @@
                                         (run-in-peek-mode ; avoid tracking deps unless necessary
                                          find-dep-cycle k watches deps)]
                                     (if cycle
-                                      ;; track dependency changes in the cycle,
-                                      ;; so I can clear the error if the cycle
-                                      ;; is broken by editing some other cell
                                       (do
+                                        ;; track dependency changes in the cycle,
+                                        ;; so I can clear the error if the cycle
+                                        ;; is broken by editing some other cell
                                         (dorun (map (comp deref deps) cycle))
                                         {:error "ERROR: Formula would introduce cycles"})
                                       (do (reset! (deps k) watches)
