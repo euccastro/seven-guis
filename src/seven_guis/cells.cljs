@@ -127,6 +127,7 @@
       (ratom/dispose! formula-reaction)
       (ratom/dispose! source-reaction))))
 
+
 (defn cell-map [f]
   (into {}
         (for [row rows
