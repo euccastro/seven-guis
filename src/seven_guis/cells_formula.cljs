@@ -230,7 +230,7 @@
                      " "
                      (str/join ", " erroring-watches))
                 (map watch-m watches))))}
-      ;; disable this since it's most likely a puzzling typo
+      ;; disallow this since it's most likely a puzzling typo
       (compile {:type :error :msg (str "ERROR: empty range " start ":" end)}))))
 
 
