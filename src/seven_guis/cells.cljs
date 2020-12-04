@@ -27,7 +27,7 @@
 ;;; and pipes it into the value cursor via a `clojure.core/watch`. We could get
 ;;; rid of this watch by having everyone interested in this cell's value `deref`
 ;;; its `formula-reaction` directly, but that would make it harder to get hold
-;;; of the wholprogram state for Undo etc.
+;;; of the whole program state for Undo etc., as said in the first paragraph.
 ;;;
 
 (ns seven-guis.cells
