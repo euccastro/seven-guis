@@ -9,13 +9,15 @@
 ;;;
 ;;; What *is* necessary is to track some ratom(s) for cell *values* in a
 ;;; centralized way, so cells can watch changes in the value of other cells.
+;;; Sometimes cells also need to track the *dependencies* of other cells, to
+;;; avoid dependency cycles, and to react to those being broken.
 ;;;
-;;; Each cell only `deref`s its own state (plus any dependencies in its formula;
-;;; see below), and the top-level spreadsheet component doesn't `deref`
-;;; anything, so the effect of mutations is contained.
+;;; Other than that, cell components only `deref` their own state, and the
+;;; top-level spreadsheet component doesn't `deref` anything, so the effect of
+;;; mutations is contained.
 ;;;
 ;;; Formulas are compiled into cljs functions (along with a description of their
-;;; dependencies, if any) only when the user edits them. We do that via a
+;;; dependencies, if any) when the user edits them. We do that via a
 ;;; reagent.ratom/reaction called `source-reaction`. Dependency cycles are
 ;;; checked for and prevented at this time.
 ;;;
@@ -24,10 +26,12 @@
 ;;; cells to watch for this purpose is made dynamically by watching
 ;;; `source-reaction`. This prevents cells from reacting to changes in cells
 ;;; they no longer depend on. `formula-reaction` recalculates the cell's value
-;;; and pipes it into the value cursor via a `clojure.core/watch`. We could get
-;;; rid of this watch by having everyone interested in this cell's value `deref`
-;;; its `formula-reaction` directly, but that would make it harder to get hold
-;;; of the whole program state for Undo etc., as said in the first paragraph.
+;;; and pushes it to the value cursor.
+;;;
+;;; Since the `value-cursor`s track `formula-reaction` we could get rid of them
+;;; and have cells watch the `formula-reaction` of their dependencies directly,
+;;; but then we couldn't have a single atom holding the whole app state, as
+;;; desired.
 ;;;
 
 (ns seven-guis.cells
@@ -65,50 +69,50 @@
   (f (zipmap watches (map (comp deref cursors) watches))))
 
 
-(defn would-introduce-cycles? [k watches deps]
-  (loop [visited #{}
-         [x & frontier-rest] watches]
-    (cond
-      (nil? x) false
-      (= x k) true
-      :else (recur (conj visited x)
-                   (concat frontier-rest (remove visited (get deps x)))))))
+(defn find-path [[head :as path] target succ-fn]
+  (when head
+       (if (= head target)
+         path
+         (first (keep #(find-path (cons % path) target succ-fn)
+                      (succ-fn head))))))
 
 
-(comment
-  ;; In production code I'd add property-based tests for this.
-  (would-introduce-cycles? "A1" '() {})
-  (would-introduce-cycles? "A1" '("A1") {})
-  (would-introduce-cycles? "A1" '("B1") {})
-  (would-introduce-cycles? "A1" '("B1" "C1") {"B1" '("C1")})
-  (would-introduce-cycles? "A1" '("B1") {"C1" '("A1")})
-  (would-introduce-cycles? "A1" '("B1" "C1") {"B1" '("C1")
-                                              "C1" '("A1")})
-  )
+(defn find-dep-cycle [k watches deps]
+  (first (keep #(find-path (cons % nil) k (comp deref (fn [x]
+                                                        (prn "si" x (deps x))
+                                                        (deps x))))
+               watches)))
+
+
+(defn run-in-peek-mode [f & args]
+  (binding [ratom/*ratom-context* nil]
+    (apply f args)))
 
 
 (defn cell [k source-cursors value-cursors deps]
-  (r/with-let [value-cursor (get value-cursors k)
-               source-cursor (get source-cursors k)
+  (r/with-let [source-cursor (get source-cursors k)
+               value-cursor (get value-cursors k)
                edit-text (r/atom nil)
                source-reaction (ratom/run!
                                 (let [{:keys [watches] :as formula}
                                       (compile-src (or @source-cursor ""))]
-                                  (if (would-introduce-cycles? k watches @deps)
-                                    {:error "ERROR: Formula would introduce cycles"}
-                                    formula)))
+                                  (let [cycle
+                                        (run-in-peek-mode ; avoid tracking deps unless necessary
+                                         find-dep-cycle k watches deps)]
+                                    (if cycle
+                                      ;; track dependency changes in the cycle,
+                                      ;; so I can clear the error if the cycle
+                                      ;; is broken by editing some other cell
+                                      (do
+                                        (dorun (map (comp deref deps) cycle))
+                                        {:error "ERROR: Formula would introduce cycles"})
+                                      (do (reset! (deps k) watches)
+                                          formula)))))
                formula-reaction (ratom/run!
-                                 (let [{:keys [error] :as formula} @source-reaction]
-                                   (if error
-                                     error
-                                     (compute-formula formula value-cursors ))))
-               _ (add-watch source-reaction k
-                            (fn [_ _ _ {:keys [error watches]}]
-                              (when-not error
-                                (swap! deps assoc k watches))))
-               _ (add-watch formula-reaction k
-                            (fn [_ _ _ new-val]
-                              (reset! value-cursor new-val)))]
+                                 (->> (let [{:keys [error] :as formula} @source-reaction]
+                                        (or error
+                                            (compute-formula formula value-cursors)))
+                                      (reset! value-cursor)))]
     [:td {:title k     ; tooltip to double-check you're editing the right cell
           :on-double-click #(reset! edit-text (or @source-cursor ""))}
      (if (some? @edit-text)
@@ -118,22 +122,21 @@
       (ratom/dispose! formula-reaction)
       (ratom/dispose! source-reaction))))
 
-
-(defn cursors [state top-level-k]
+(defn cell-map [f]
   (into {}
         (for [row rows
               col cols
               :let [k (cell-key col row)]]
-          [k (r/cursor state [top-level-k k])])))
+          [k (f k)])))
 
 
 (defn spreadsheet []
   (let [state (r/atom {:cell-sources {}
                        :cell-values {}})
-        source-cursors (cursors state :cell-sources)
-        value-cursors (cursors state :cell-values)
+        source-cursors (cell-map #(r/cursor state [:cell-sources %]))
+        value-cursors (cell-map #(r/cursor state [:cell-values %]))
         ;; for cycle detection; this is ultimately derived from `(:cell-sources state)`
-        deps (atom {})]
+        deps (cell-map #(r/atom #{}))]
     (fn []
       [:table
        [:thead
