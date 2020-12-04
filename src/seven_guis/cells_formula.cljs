@@ -335,7 +335,8 @@
 (defn compile-src
   "Return a compiled formula, of the form
 
-  {:watches #{cell-id...} :f ([watch-m] -> number|string)}
+  {:watches #{cell-id...}
+   :f ([watch-m] -> number|string)}
 
   where `watch-m` is a map from cell ID to the value output by the corresponding
   cell and :f only returns a string on errors.
