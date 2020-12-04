@@ -164,7 +164,7 @@
 
 
 (defmulti compile
-  "AST node -> compiled formula or error (see docstring for `parse`)"
+  "AST node -> compiled formula or error (see docstring for `compile-src`)"
   :type)
 
 
