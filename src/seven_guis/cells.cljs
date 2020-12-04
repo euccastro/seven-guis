@@ -82,23 +82,23 @@
   (f (zipmap watches (map (comp deref cursors) watches))))
 
 
-(defn find-path [[head :as path] target succ-fn]
-  (when head
-       (if (= head target)
-         path
-         ;; Although this is depth-first search, we don't need to check for
-         ;; cycles because by construction we don't have any (preventing
-         ;; dependency cycles is the very purpose of this function in the
-         ;; context of this namespace). Adding an assert would bump the big-O
-         ;; cost of this function for no real benefit. If we had a cycle the
-         ;; user would be screwed already, and it's not clear how we could help
-         ;; them now. So I chose to "optimize for a correct program" here.
-         (first (keep #(find-path (cons % path) target succ-fn)
-                      (succ-fn head))))))
+(defn find-path [from to succ-fn]
+  (if (= from to)
+    (cons from nil)
+    ;; Although this is depth-first search, we don't need to check for
+    ;; cycles because by construction we don't have any (preventing
+    ;; dependency cycles is the very purpose of this function in the
+    ;; context of this namespace). Adding an assert would bump the big-O
+    ;; cost of this function for no real benefit. If we had a cycle the
+    ;; user would be screwed already, and it's not clear how we could help
+    ;; them now. So I chose to "optimize for a correct program" here.
+    (when-let [path (first (keep #(find-path % to succ-fn)
+                                 (succ-fn from)))]
+        (cons from path))))
 
 
 (defn find-dep-cycle [k watches deps]
-  (first (keep #(find-path (cons % nil) k (comp deref deps))
+  (first (keep #(find-path % k (comp deref deps))
                watches)))
 
 
@@ -125,10 +125,12 @@
                              find-dep-cycle k watches deps)]
                     (if cycle
                       (do
-                        ;; track dependency changes in the cycle,
-                        ;; so I can clear the error if the cycle
-                        ;; is broken by editing some other cell
-                        (dorun (map (comp deref deps) cycle))
+                        ;; track dependency changes in the cycle, so I can clear
+                        ;; the error if the cycle is broken by editing some
+                        ;; other cell
+                        (dorun (map (comp deref deps)
+                                    (butlast  ; last is this cell
+                                     cycle)))
                         {:error "ERROR: Formula would introduce cycles"})
                       (do (reset! (deps k) watches)
                           formula))))
