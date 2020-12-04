@@ -7,31 +7,44 @@
 ;;; of the 7guis challenge, but it is done for illustration purposes. If we were
 ;;; doing Undo or load/save functionality, this is what we'd manage with those.
 ;;;
-;;; What *is* necessary is to track some ratom(s) for cell *values* in a
-;;; centralized way, so cells can watch changes in the value of other cells.
-;;; Sometimes cells also need to track the *dependencies* of other cells, to
-;;; avoid dependency cycles, and to react to those being broken.
+;;; What *is* necessary is to track the calculated cell *values* across cells
+;;; so value changes can be propagated reactively. As an obscure corner case
+;;; (see `dep-check-reaction` below for the details), sometimes cells need to
+;;; track the *dependencies* of other cells, in order to clear any errors caused
+;;; by previously detected dependency cycles.
 ;;;
 ;;; Other than that, cell components only `deref` their own state, and the
 ;;; top-level spreadsheet component doesn't `deref` anything, so the effect of
 ;;; mutations is contained.
+;;;
+;;; User-entered text is processed in the following pipeline:
+;;; (Note: +> marks additional input from other cells)
+;;;
+;;; text in edit box (edit-text)
+;;;
+;;; -> working source (`source-cursors`, part of authoritative app state)
+;;;    +> watched `deps` from other cells (if we have detected a cycle)
+;;;
+;;; -> compiled formula with checked dependencies (`dep-check-reaction`)
+;;;    +> computed value of dependency cells (watched selectively from
+;;;      `source-cursors`)
+;;;
+;;; -> evaluation (`eval-reaction`)
+;;;
+;;; -> computed value (`value-cursors`; part of authoratitative app state)
+;;;
+;;; At each stage, errors from previous ones are passed through, bypassing
+;;; normal processing.
 ;;;
 ;;; Formulas are compiled into cljs functions (along with a description of their
 ;;; dependencies, if any) when the user edits them. We do that via a
 ;;; reagent.ratom/reaction called `source-reaction`. Dependency cycles are
 ;;; checked for and prevented at this time.
 ;;;
-;;; Each cell has a `formula-reaction` reagent.ratom/reaction that watches for
-;;; changes in the *values* of cells it depends on. The determination of which
-;;; cells to watch for this purpose is made dynamically by watching
-;;; `source-reaction`. This prevents cells from reacting to changes in cells
-;;; they no longer depend on. `formula-reaction` recalculates the cell's value
-;;; and pushes it to the value cursor.
-;;;
-;;; Since the `value-cursor`s track `formula-reaction` we could get rid of them
-;;; and have cells watch the `formula-reaction` of their dependencies directly,
-;;; but then we couldn't have a single atom holding the whole app state, as
-;;; desired.
+;;; Since the `value-cursor`s just track `eval-reaction`s without further
+;;; processing, we *could* get rid of them and have cells watch the
+;;; `eval-reaction` of their dependencies directly, but then we couldn't have a
+;;; single atom holding the whole app state as a plain value, as desired.
 ;;;
 
 (ns seven-guis.cells
@@ -95,37 +108,45 @@
 
 
 (defn cell [k source-cursors value-cursors deps]
-  (r/with-let [source-cursor (get source-cursors k)
-               value-cursor (get value-cursors k)
+  (r/with-let [;; Holds transient text we're editing in this cell but haven't
+               ;; commited to evaluation yet. Also signals editing mode.
                edit-text (r/atom nil)
-               source-reaction (ratom/run!
-                                (let [{:keys [watches] :as formula}
-                                      (compile-src (or @source-cursor ""))]
-                                  (let [cycle
-                                        (run-in-peek-mode ; avoid tracking deps unless necessary
-                                         find-dep-cycle k watches deps)]
-                                    (if cycle
-                                      (do
-                                        ;; track dependency changes in the cycle,
-                                        ;; so I can clear the error if the cycle
-                                        ;; is broken by editing some other cell
-                                        (dorun (map (comp deref deps) cycle))
-                                        {:error "ERROR: Formula would introduce cycles"})
-                                      (do (reset! (deps k) watches)
-                                          formula)))))
-               formula-reaction (ratom/run!
-                                 (->> (let [{:keys [error] :as formula} @source-reaction]
-                                        (or error
-                                            (compute-formula formula value-cursors)))
-                                      (reset! value-cursor)))]
+               ;; Holds the results of the last complete edit of this cell.
+               source-cursor (get source-cursors k)
+               ;; Holds the value that this cell outputs
+               value-cursor (get value-cursors k)
+               ;; Checks for, and maintains, errors due to formula dependency
+               ;; cycles.
+               dep-check-reaction
+               (ratom/run!
+                (let [{:keys [watches] :as formula}
+                      (compile-src (or @source-cursor ""))
+                      cycle (run-in-peek-mode ; avoid tracking deps unless necessary
+                             find-dep-cycle k watches deps)]
+                    (if cycle
+                      (do
+                        ;; track dependency changes in the cycle,
+                        ;; so I can clear the error if the cycle
+                        ;; is broken by editing some other cell
+                        (dorun (map (comp deref deps) cycle))
+                        {:error "ERROR: Formula would introduce cycles"})
+                      (do (reset! (deps k) watches)
+                          formula))))
+               ;; Evaluates the compiled formula, producing output value.
+               eval-reaction
+               (ratom/run!
+                (->> (let [{:keys [error] :as formula} @dep-check-reaction]
+                       (or error
+                           (compute-formula formula value-cursors)))
+                     (reset! value-cursor)))]
     [:td {:title k     ; tooltip to double-check you're editing the right cell
           :on-double-click #(reset! edit-text (or @source-cursor ""))}
      (if (some? @edit-text)
        [cell-editor edit-text source-cursor]
        (str @value-cursor))]
     (finally
-      (ratom/dispose! formula-reaction)
-      (ratom/dispose! source-reaction))))
+      (ratom/dispose! eval-reaction)
+      (ratom/dispose! dep-check-reaction))))
 
 
 (defn cell-map [f]
