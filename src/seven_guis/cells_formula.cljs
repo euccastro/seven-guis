@@ -1,3 +1,11 @@
+;;;
+;;; If requirements allowed, I'd rather just use Borkdude's SCI or some
+;;; EDN-based DSL. But I'll stick to the terms of the 7GUIs challenge.
+;;;
+;;; I'd also use some parsing library instead of rolling my own, but for the
+;;; sake of demonstration I'm not using any dependency but reagent.
+;;;
+
 (ns seven-guis.cells-formula
   (:require [seven-guis.util :as util]
             [clojure.set :as set]
@@ -93,18 +101,19 @@
   "return [error-msg args remaining-tokens]"
   [tokens]
   (loop [args [] tokens tokens]
-    (cond
-      (empty? tokens) ["SYNTAX ERROR: unexpected EOF" nil tokens]
-      (starts-with-types? tokens [:close-paren]) [nil args (rest tokens)]
-      :else
-      (let [[arg tokens] (pop-ast tokens)]
-        (if (= (:type arg) :error)
-          [(:msg arg) nil tokens]
-          (recur (conj args arg)
-                 (cond-> tokens
-                   ;; We allow a trailing comma in the arglist, for no strong
-                   ;; reason.
-                   (starts-with-types? tokens [:comma]) rest)))))))
+    (if (empty? tokens) ["SYNTAX ERROR: unexpected EOF" nil tokens]
+        ;; At least one argument is required. There's really no point in
+        ;; allowing the likes of sum() for 0 in these formulas, since that's
+        ;; useless and most likely a result of user error.
+        (let [[arg tokens] (pop-ast tokens)]
+          (cond
+            (= (:type arg) :error) [(:msg arg) nil nil]
+            (starts-with-types? tokens [:close-paren]) [nil (conj args arg) (rest tokens)]
+            (starts-with-types? tokens [:comma]) (recur (conj args arg) (rest tokens))
+            :else [(str "SYNTAX ERROR: expected ',' or ')' after argument, not "
+                        (pr-str (:src (first tokens))))
+                   nil nil])))))
+
 
 (defn pop-ast
   [tokens]
@@ -126,7 +135,7 @@
 
     (starts-with-types? tokens [:symbol] )
     (if-not (starts-with-types? (rest tokens) [:open-paren])
-      [{:type :error :msg (str "SYNTAX ERROR: expected open (, not " (pr-str (:src (second tokens))))}]
+      [{:type :error :msg (str "SYNTAX ERROR: expected '(', not " (pr-str (:src (second tokens))))}]
       (let [f (:src (first tokens))
             [error-msg args remaining-tokens] (collect-args (drop 2 tokens))]
         (if error-msg
@@ -238,17 +247,9 @@
 
 (def builtins
   {"sum" +
-   "sub" (fn
-           ([] 0)
-           ([x] (- x))
-           ([x y] (- x y))
-           ([x y & args] (apply - x y args)))
+   "sub" -
    "mul" *
-   "div" (fn
-           ([] 1)
-           ([x] (/ x))
-           ([x y] (/ x y))
-           ([x y & args] (apply / x y args)))})
+   "div" /})
 
 
 (defn fuzzy-cat
