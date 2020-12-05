@@ -110,7 +110,7 @@
             (= (:type arg) :error) [(:msg arg) nil nil]
             (starts-with-types? tokens [:close-paren]) [nil (conj args arg) (rest tokens)]
             (starts-with-types? tokens [:comma]) (recur (conj args arg) (rest tokens))
-            :else [(str "SYNTAX ERROR: expected ',' or ')' after argument, not "
+            :else [(str "SYNTAX ERROR: expected \",\" or \")\" after argument, not "
                         (pr-str (:src (first tokens))))
                    nil nil])))))
 
@@ -135,7 +135,7 @@
 
     (starts-with-types? tokens [:symbol] )
     (if-not (starts-with-types? (rest tokens) [:open-paren])
-      [{:type :error :msg (str "SYNTAX ERROR: expected '(', not " (pr-str (:src (second tokens))))}]
+      [{:type :error :msg (str "SYNTAX ERROR: expected \"(\", not " (pr-str (:src (second tokens))))}]
       (let [f (:src (first tokens))
             [error-msg args remaining-tokens] (collect-args (drop 2 tokens))]
         (if error-msg
