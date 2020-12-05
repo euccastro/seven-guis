@@ -124,14 +124,16 @@
     (starts-with-types? tokens [:coord])
     [(first tokens) (rest tokens)]
 
-    (starts-with-types? tokens [:symbol :open-paren])
-    (let [f (:src (first tokens))
-          [error-msg args remaining-tokens] (collect-args (drop 2 tokens))]
-      (if error-msg
-        [{:type :error :msg error-msg}]
-        [{:type :call :f f :args args} remaining-tokens]))
+    (starts-with-types? tokens [:symbol] )
+    (if-not (starts-with-types? (rest tokens) [:open-paren])
+      [{:type :error :msg (str "SYNTAX ERROR: expected open (, not " (pr-str (:src (second tokens))))}]
+      (let [f (:src (first tokens))
+            [error-msg args remaining-tokens] (collect-args (drop 2 tokens))]
+        (if error-msg
+          [{:type :error :msg error-msg}]
+          [{:type :call :f f :args args} remaining-tokens])))
     :else
-    [{:type :error :msg (str "ERROR: Unexpected token " (pr-str (:src (first tokens))))}]))
+    [{:type :error :msg (str "SYNTAX ERROR: Unexpected token " (pr-str (:src (first tokens))))}]))
 
 
 (comment
