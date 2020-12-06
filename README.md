@@ -19,3 +19,11 @@ where `<task>` is one of
 - `crud`
 - `circle-drawer`
 - `cells`
+
+To build once with advanced optimizations
+
+`clojure -M -m figwheel.main -O advanced -bo <task>`
+
+To run tests
+
+`clojure -M:test`
