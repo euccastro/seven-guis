@@ -47,12 +47,11 @@
 ;;; single atom holding the whole app state as a plain value, as desired.
 ;;;
 
-(ns seven-guis.cells
+(ns seven-guis.cells.components
   (:require [reagent.core :as r]
-            [reagent.dom :as rdom]
             [reagent.ratom :as ratom]
             [seven-guis.util :as util]
-            [seven-guis.cells-formula :refer [cell-key compile-src]]))
+            [seven-guis.cells.formula :refer [cell-key compile-src]]))
 
 
 (def rows (range 100))
@@ -181,7 +180,3 @@
                  :let [k (cell-key col row)]]
              ^{:key k}
              [cell k source-cursors value-cursors deps])])]])))
-
-
-(rdom/render [spreadsheet]
-             (.getElementById js/document "app"))

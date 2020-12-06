@@ -6,7 +6,7 @@
 ;;; sake of demonstration I'm not using any dependency but reagent.
 ;;;
 
-(ns seven-guis.cells-formula
+(ns seven-guis.cells.formula
   (:require [seven-guis.util :as util]
             [clojure.set :as set]
             [clojure.string :as str]
