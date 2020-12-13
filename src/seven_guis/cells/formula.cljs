@@ -38,13 +38,11 @@
   [src]
   (or
    (when (empty? src) [{:type :eof} ""])
-   (reduce (fn [_ [k regex]]
-             (when-let [match (re-find regex src)]
-               (reduced [{:type k
-                          :src match}
-                         (subs src (count match))])))
-           nil
-           token-regexes)
+   (some (fn [[k regex]]
+           (when-let [match (re-find regex src)]
+             [{:type k :src match}
+              (subs src (count match))]))
+         token-regexes)
    [{:type :error
      :msg (str "SYNTAX ERROR: unrecognized token at " (pr-str src))
      :src src} ""]))
